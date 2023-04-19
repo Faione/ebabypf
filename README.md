@@ -23,7 +23,7 @@ CO-RE ebpf program written in rust, base on  libbpf-rs
 CO-RE using `vmlinux.h` to provide BTF, which is different between some versions. To ensure correctness, the best way is to generate `vmlinux.h` by yourself
 
 ```shell
-bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h
+bpftool btf dump file /sys/kernel/btf/vmlinux format c > src/bpf/vmlinux.h
 ```
 
 build ebpf program
