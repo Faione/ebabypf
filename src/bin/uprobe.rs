@@ -3,16 +3,8 @@ mod uprobe {
     include!(concat!(env!("OUT_DIR"), "/uprobe.skel.rs"));
 }
 
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-
-use anyhow::Ok;
 use libbpf_rs::PrintLevel;
+use tokio::signal;
 use uprobe::*;
 
 fn print_to_log(level: PrintLevel, msg: String) {
@@ -20,7 +12,8 @@ fn print_to_log(level: PrintLevel, msg: String) {
         _ => println!("{}", msg),
     }
 }
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     libbpf_rs::set_print(Some((PrintLevel::Debug, print_to_log)));
     let skel_builder = UprobeSkelBuilder::default();
     // 读取字节码
@@ -36,19 +29,12 @@ fn main() -> anyhow::Result<()> {
         "Successfully started! Please run `sudo cat /sys/kernel/debug/tracing/trace_pipe` to see output of the BPF programs."
     );
 
-    // 键盘事件监听
-    let running = Arc::new(AtomicBool::new(true));
-    let r = Arc::clone(&running);
-
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("error while setting ctrlc handler");
-
-    while running.load(Ordering::SeqCst) {
-        eprint!(".");
-        std::thread::sleep(Duration::from_secs(1));
+    // 退出信号监听
+    match signal::ctrl_c().await {
+        Ok(()) => {}
+        Err(err) => {
+            eprintln!("Unable to listen for shutdown signal: {}", err);
+        }
     }
-
     Ok(())
 }

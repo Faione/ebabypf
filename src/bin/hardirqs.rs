@@ -3,20 +3,13 @@ mod hardirqs {
     include!(concat!(env!("OUT_DIR"), "/hardirqs.skel.rs"));
 }
 
-use std::{
-    env,
-    io::Write,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+use std::{env, io::Write, time::Duration};
 
 use clap::Parser;
 use hardirqs::*;
 use libbpf_rs::{Map, MapFlags, PrintLevel};
 use plain::Plain;
+use tokio::{select, signal};
 
 unsafe impl Plain for hardirqs_bss_types::info {}
 unsafe impl Plain for hardirqs_bss_types::irq_key {}
@@ -48,7 +41,7 @@ fn init_libbpf_log() {
     )));
 }
 
-fn print_mp(mp: &Map) {
+fn read_event(mp: &Map) -> String {
     let mut line = String::new();
     line.push_str(&format!("{:20} {:10} {:20}\n", "IRQ", "COUNT", "SUM"));
 
@@ -70,6 +63,12 @@ fn print_mp(mp: &Map) {
         }
     });
 
+    line
+}
+
+fn print_mp(mp: &Map) {
+    let line = read_event(mp);
+
     // 将光标移动到第一行第一列并打印所有内容
     print!("\x1B[2J\x1B[1;1H{}", line);
 
@@ -77,8 +76,10 @@ fn print_mp(mp: &Map) {
     std::io::stdout().flush().expect("flush falied");
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     init_libbpf_log();
+
     let opts = Command::parse();
 
     let mut skel_builder = HardirqsSkelBuilder::default();
@@ -87,32 +88,27 @@ fn main() -> anyhow::Result<()> {
     }
 
     // 读取字节码
-    let mut open_skel = skel_builder.open()?;
+    let mut open_skel = skel_builder.open().unwrap();
     if opts.ns {
         open_skel.rodata().enable_ns = true;
     }
 
     // 加载ebpf程序到内核
-    let mut skel = open_skel.load()?;
+    let mut skel = open_skel.load().unwrap();
 
     // attach ebpf程序到挂载点
-    skel.attach()?;
+    skel.attach().unwrap();
 
     let maps = skel.maps();
     let infos = maps.infos();
 
-    // 键盘事件监听
-    let running = Arc::new(AtomicBool::new(true));
-    let r = Arc::clone(&running);
-
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("error while setting ctrlc handler");
-
-    while running.load(Ordering::SeqCst) {
-        std::thread::sleep(Duration::from_secs(1));
-        print_mp(infos);
+    loop {
+        select! {
+            _ = signal::ctrl_c() => break,
+            _ = tokio::time::sleep(Duration::from_millis(1000)) => {
+                print_mp(infos);
+            }
+        }
     }
 
     Ok(())

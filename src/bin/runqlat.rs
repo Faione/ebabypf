@@ -8,6 +8,7 @@ use std::{env, fmt::Error, str::FromStr, time::Duration};
 use anyhow::bail;
 use byteorder::{ByteOrder, LittleEndian};
 use clap::Parser;
+use tokio::{select, signal};
 
 use libbpf_rs::{Map, MapFlags, PrintLevel};
 use plain::Plain;
@@ -110,7 +111,8 @@ fn print_hist(mp: &Map, per_mode: PerMode) {
     });
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     init_libbpf_log();
     let opts = Command::parse();
 
@@ -144,7 +146,13 @@ fn main() -> anyhow::Result<()> {
     let hists = maps.hists();
 
     loop {
-        std::thread::sleep(Duration::from_secs(1));
-        print_hist(hists, opts.per_mode);
+        select! {
+            _ = signal::ctrl_c() => break,
+            _ = tokio::time::sleep(Duration::from_millis(1000)) => {
+                print_hist(hists, opts.per_mode);
+            }
+        }
     }
+
+    Ok(())
 }

@@ -15,6 +15,7 @@ use ebabypf::{b2l_u128_array, b2l_u32};
 use libbpf_rs::{Map, MapFlags, PrintLevel};
 use plain::Plain;
 use tcpalive::*;
+use tokio::{select, signal};
 
 const TCP_STATES: [&'static str; 14] = [
     "",
@@ -120,7 +121,8 @@ fn print_connections(connections: &Map) {
     std::io::stdout().flush().expect("flush falied");
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     init_log();
     let opts = Command::parse();
 
@@ -142,7 +144,13 @@ fn main() -> anyhow::Result<()> {
     let connetions = maps.conns();
 
     loop {
-        std::thread::sleep(Duration::from_secs(1));
-        print_connections(connetions);
+        select! {
+            _ = signal::ctrl_c() => break,
+            _ = tokio::time::sleep(Duration::from_millis(1000)) => {
+                print_connections(connetions);
+            }
+        }
     }
+
+    Ok(())
 }

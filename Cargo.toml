@@ -14,6 +14,7 @@ ctrlc = "3.2.5"
 libbpf-rs = "0.20.1"
 libc = "0.2.141"
 plain = "0.2.3"
+tokio = { version = "1.28.0", features = ["full"] }
 
 [build-dependencies]
 libbpf-cargo = "0.20.1"
